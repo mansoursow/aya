@@ -275,6 +275,27 @@ body::after {
   display: none;
 }
 
+.video-gate {
+  position: fixed;
+  left: 50%;
+  bottom: 58px;
+  transform: translateX(-50%);
+  padding: 10px 12px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  color: rgba(255, 255, 255, 0.9);
+  font-weight: 600;
+  font-size: 13px;
+  backdrop-filter: blur(10px);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45);
+  z-index: 3;
+}
+
+.video-gate.is-hidden {
+  display: none;
+}
+
 .dots {
   display: flex;
   gap: 8px;

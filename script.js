@@ -28,6 +28,7 @@
   const nextBtn = document.getElementById("next");
   const audio = document.getElementById("audio");
   const audioGate = document.getElementById("audio-gate");
+  const videoGate = document.getElementById("video-gate");
 
   let w = 0;
   let h = 0;
@@ -158,6 +159,7 @@
   let idx = 0;
   let slideTimer = null;
   let isVideoPlaying = false;
+  let videoUnlockHandler = null;
 
   function extOf(path) {
     const q = path.split("?")[0];
@@ -190,29 +192,79 @@
     isVideoPlaying = false;
     slideImg.classList.remove("is-visible");
     slideVideo.classList.remove("is-visible");
+    if (videoGate) videoGate.classList.add("is-hidden");
 
     const src = media[idx].src;
     if (isVideo(src)) {
       slideImg.classList.add("is-hidden");
       slideVideo.classList.remove("is-hidden");
-      slideVideo.src = src;
-      slideVideo.currentTime = 0;
+
+      // iOS/Safari is picky: attributes must be set before play(), and sometimes
+      // play() only works after canplay.
+      slideVideo.pause();
+      slideVideo.removeAttribute("src");
+      slideVideo.load();
+
       slideVideo.loop = true;
       slideVideo.muted = true;
+      slideVideo.setAttribute("muted", "");
       slideVideo.playsInline = true;
-      slideVideo
-        .play()
-        .then(() => {
+      slideVideo.setAttribute("playsinline", "");
+      slideVideo.setAttribute("webkit-playsinline", "");
+      slideVideo.autoplay = true;
+      slideVideo.setAttribute("autoplay", "");
+
+      slideVideo.src = src;
+      slideVideo.currentTime = 0;
+      slideVideo.load();
+
+      const attemptPlay = async () => {
+        try {
+          await slideVideo.play();
           isVideoPlaying = true;
+          if (videoGate) videoGate.classList.add("is-hidden");
+          if (videoUnlockHandler) {
+            window.removeEventListener("pointerdown", videoUnlockHandler);
+            window.removeEventListener("touchstart", videoUnlockHandler);
+            videoUnlockHandler = null;
+          }
           requestAnimationFrame(() => slideVideo.classList.add("is-visible"));
-        })
-        .catch(() => {
-          slideVideo.classList.add("is-hidden");
-          slideImg.classList.remove("is-hidden");
-          const fallback = createFallbackDataUrl(`Vidéo ${idx + 1}`);
-          slideImg.src = fallback;
-          requestAnimationFrame(() => slideImg.classList.add("is-visible"));
+          return true;
+        } catch {
+          return false;
+        }
+      };
+
+      const onCanPlay = async () => {
+        slideVideo.removeEventListener("canplay", onCanPlay);
+        slideVideo.removeEventListener("loadeddata", onCanPlay);
+        const ok = await attemptPlay();
+        if (!ok) {
+          if (videoGate) videoGate.classList.remove("is-hidden");
+          if (!videoUnlockHandler) {
+            videoUnlockHandler = () => {
+              attemptPlay().then((worked) => {
+                if (worked) {
+                  if (videoGate) videoGate.classList.add("is-hidden");
+                }
+              });
+            };
+            window.addEventListener("pointerdown", videoUnlockHandler, { once: true });
+            window.addEventListener("touchstart", videoUnlockHandler, { once: true });
+          }
+        }
+      };
+
+      slideVideo.addEventListener("canplay", onCanPlay);
+      slideVideo.addEventListener("loadeddata", onCanPlay);
+
+      // Fallback: if canplay is slow, try once after a short delay too.
+      window.setTimeout(() => {
+        if (!isVideoPlaying && !slideVideo.paused) return;
+        attemptPlay().then((worked) => {
+          if (!worked && videoGate) videoGate.classList.remove("is-hidden");
         });
+      }, 350);
     } else {
       slideVideo.pause();
       slideVideo.removeAttribute("src");
