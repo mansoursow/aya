@@ -162,6 +162,7 @@
   let slideTimer = null;
   let isVideoPlaying = false;
   let videoUnlockHandler = null;
+  let activeSlideToken = 0;
   const preloadVideoEl = document.createElement("video");
   preloadVideoEl.muted = true;
   preloadVideoEl.setAttribute("muted", "");
@@ -182,9 +183,57 @@
     return ext === "mp4" || ext === "mov";
   }
 
+  function sourceMime(path) {
+    const ext = extOf(path);
+    if (ext === "mp4") return "video/mp4";
+    if (ext === "mov") return "video/quicktime";
+    return "";
+  }
+
   function clampIndex(i) {
     const n = media.length;
     return ((i % n) + n) % n;
+  }
+
+  function resetVideoEl() {
+    try {
+      slideVideo.pause();
+    } catch {
+      // ignore
+    }
+    slideVideo.classList.remove("is-visible");
+    slideVideo.classList.add("is-hidden");
+    slideVideo.removeAttribute("src");
+    slideVideo.innerHTML = "";
+    try {
+      slideVideo.load();
+    } catch {
+      // ignore
+    }
+  }
+
+  function setupVideoAttrs() {
+    slideVideo.loop = true;
+    slideVideo.muted = true;
+    slideVideo.setAttribute("muted", "");
+    slideVideo.playsInline = true;
+    slideVideo.setAttribute("playsinline", "");
+    slideVideo.setAttribute("webkit-playsinline", "");
+    slideVideo.autoplay = true;
+    slideVideo.setAttribute("autoplay", "");
+    slideVideo.preload = "auto";
+    slideVideo.setAttribute("preload", "auto");
+  }
+
+  function setVideoSources(sources) {
+    slideVideo.innerHTML = "";
+    for (const s of sources) {
+      const el = document.createElement("source");
+      el.src = s;
+      const type = sourceMime(s);
+      if (type) el.type = type;
+      slideVideo.appendChild(el);
+    }
   }
 
   function preloadItem(i) {
@@ -227,6 +276,9 @@
   }
 
   function renderSlide() {
+    activeSlideToken += 1;
+    const token = activeSlideToken;
+
     isVideoPlaying = false;
     slideImg.classList.remove("is-visible");
     slideVideo.classList.remove("is-visible");
@@ -238,31 +290,18 @@
       slideImg.classList.add("is-hidden");
       slideVideo.classList.remove("is-hidden");
 
-      // iOS/Safari is picky: attributes must be set before play(), and sometimes
-      // play() only works after canplay.
-      slideVideo.pause();
-      slideVideo.removeAttribute("src");
-      slideVideo.load();
-
-      slideVideo.loop = true;
-      slideVideo.muted = true;
-      slideVideo.setAttribute("muted", "");
-      slideVideo.playsInline = true;
-      slideVideo.setAttribute("playsinline", "");
-      slideVideo.setAttribute("webkit-playsinline", "");
-      slideVideo.autoplay = true;
-      slideVideo.setAttribute("autoplay", "");
-      slideVideo.preload = "auto";
-      slideVideo.setAttribute("preload", "auto");
-
-      let sourceIndex = 0;
-      slideVideo.src = sources[sourceIndex];
+      // Reset complet + sources multiples (Safari choisit une source compatible)
+      resetVideoEl();
+      setupVideoAttrs();
+      setVideoSources(sources);
+      slideVideo.classList.remove("is-hidden");
       slideVideo.currentTime = 0;
       slideVideo.load();
 
       const attemptPlay = async () => {
         try {
           await slideVideo.play();
+          if (token !== activeSlideToken) return false;
           isVideoPlaying = true;
           if (videoGate) videoGate.classList.add("is-hidden");
           if (videoUnlockHandler) {
@@ -277,33 +316,35 @@
         }
       };
 
-      const onError = () => {
-        // Essaye la source suivante (ex: MOV si MP4 manque, ou inversement)
-        if (sourceIndex < sources.length - 1) {
-          sourceIndex += 1;
-          slideVideo.pause();
-          slideVideo.removeAttribute("src");
-          slideVideo.load();
-          slideVideo.src = sources[sourceIndex];
-          slideVideo.currentTime = 0;
-          slideVideo.load();
-          return;
-        }
-
+      const cleanup = () => {
         slideVideo.removeEventListener("error", onError);
-        slideVideo.classList.add("is-hidden");
-        slideImg.classList.remove("is-hidden");
-        const fallback = createFallbackDataUrl(
-          "Vidéo trop lourde/codec non supporté. Convertis en MP4 (H.264).",
-        );
-        slideImg.src = fallback;
-        requestAnimationFrame(() => slideImg.classList.add("is-visible"));
+        slideVideo.removeEventListener("canplay", onReady);
+        slideVideo.removeEventListener("loadeddata", onReady);
       };
-      slideVideo.addEventListener("error", onError);
 
-      const onCanPlay = async () => {
-        slideVideo.removeEventListener("canplay", onCanPlay);
-        slideVideo.removeEventListener("loadeddata", onCanPlay);
+      const failAndContinue = (reason) => {
+        cleanup();
+        if (token !== activeSlideToken) return;
+
+        resetVideoEl();
+        slideImg.classList.remove("is-hidden");
+        slideImg.src = createFallbackDataUrl(reason);
+        requestAnimationFrame(() => slideImg.classList.add("is-visible"));
+
+        window.setTimeout(() => {
+          if (token === activeSlideToken) {
+            next();
+            scheduleNext();
+          }
+        }, 1200);
+      };
+
+      const onError = () => {
+        failAndContinue("Vidéo non lisible. Convertis en MP4 (H.264).");
+      };
+
+      const onReady = async () => {
+        cleanup();
         const ok = await attemptPlay();
         if (!ok) {
           if (videoGate) videoGate.classList.remove("is-hidden");
@@ -312,39 +353,49 @@
               attemptPlay().then((worked) => {
                 if (worked) {
                   if (videoGate) videoGate.classList.add("is-hidden");
+                } else {
+                  failAndContinue("Autoplay bloqué. Passage au suivant…");
                 }
               });
             };
             window.addEventListener("pointerdown", videoUnlockHandler, { once: true });
             window.addEventListener("touchstart", videoUnlockHandler, { once: true });
           }
+
+          window.setTimeout(() => {
+            if (token === activeSlideToken && !isVideoPlaying) {
+              failAndContinue("Vidéo bloquée. Passage au suivant…");
+            }
+          }, 1800);
         }
       };
 
-      slideVideo.addEventListener("canplay", onCanPlay);
-      slideVideo.addEventListener("loadeddata", onCanPlay);
+      slideVideo.addEventListener("error", onError);
+      slideVideo.addEventListener("canplay", onReady, { once: true });
+      slideVideo.addEventListener("loadeddata", onReady, { once: true });
 
-      // Fallback: if canplay is slow, try once after a short delay too.
+      // Kick
       window.setTimeout(() => {
-        if (!isVideoPlaying && !slideVideo.paused) return;
-        attemptPlay().then((worked) => {
-          if (!worked && videoGate) videoGate.classList.remove("is-hidden");
-        });
-      }, 350);
+        if (token !== activeSlideToken) return;
+        if (!isVideoPlaying) {
+          attemptPlay().then((worked) => {
+            if (!worked && videoGate) videoGate.classList.remove("is-hidden");
+          });
+        }
+      }, 250);
     } else {
       const src = sources[0];
-      slideVideo.pause();
-      slideVideo.removeAttribute("src");
-      slideVideo.load();
-      slideVideo.classList.add("is-hidden");
+      resetVideoEl();
       slideImg.classList.remove("is-hidden");
 
       const img = new Image();
       img.onload = () => {
+        if (token !== activeSlideToken) return;
         slideImg.src = src;
         requestAnimationFrame(() => slideImg.classList.add("is-visible"));
       };
       img.onerror = () => {
+        if (token !== activeSlideToken) return;
         const fallback = createFallbackDataUrl(`Photo ${idx + 1}`);
         slideImg.src = fallback;
         requestAnimationFrame(() => slideImg.classList.add("is-visible"));
@@ -369,16 +420,14 @@
     g.fillStyle = grd;
     g.fillRect(0, 0, c.width, c.height);
 
-    g.fillStyle = "rgba(255,255,255,0.9)";
-    g.font = "700 64px Inter, Arial, sans-serif";
     g.textAlign = "center";
-    g.fillText("Ajoute tes photos dans", c.width / 2, c.height / 2 - 40);
-    g.fillStyle = "rgba(255,255,255,0.85)";
-    g.font = "600 44px Inter, Arial, sans-serif";
-    g.fillText("assets/photos/", c.width / 2, c.height / 2 + 20);
+    g.fillStyle = "rgba(255,255,255,0.9)";
+    g.font = "700 60px Inter, Arial, sans-serif";
+    g.fillText(label, c.width / 2, c.height / 2 - 10);
     g.fillStyle = "rgba(255,255,255,0.75)";
     g.font = "600 34px Inter, Arial, sans-serif";
-    g.fillText(label, c.width / 2, c.height / 2 + 90);
+    g.fillText("Si tu vois ça, une vidéo .MOV est probablement incompatible.", c.width / 2, c.height / 2 + 60);
+    g.fillText("Solution: convertis en MP4 (H.264).", c.width / 2, c.height / 2 + 110);
     return c.toDataURL("image/png");
   }
 
