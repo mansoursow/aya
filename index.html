@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Joyeux anniversaire AYA</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Great+Vibes&family=Inter:wght@400;600;800&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <canvas id="fx" aria-hidden="true"></canvas>
+
+    <main class="stage" id="stage" aria-live="polite">
+      <section class="panel panel--intro" id="panel-intro">
+        <div class="card">
+          <p class="hint">Ouvre en plein écran si tu veux un effet “waouh”.</p>
+          <h1 class="title">Joyeux anniversaire</h1>
+          <p class="subtitle">Prépare-toi…</p>
+        </div>
+      </section>
+
+      <section class="panel panel--message is-hidden" id="panel-message">
+        <div class="card card--big">
+          <p class="big">Happy Birthday</p>
+          <p class="name">AYA</p>
+          <p class="small">
+            Que cette année soit remplie de joie, de santé et de
+            bonheur.
+          </p>
+        </div>
+      </section>
+
+      <section class="panel panel--gallery is-hidden" id="panel-gallery">
+        <header class="topbar">
+          <div class="topbar__left">
+            <span class="badge">Pour AYA</span>
+            <span class="topbar__title">Nos meilleurs moments</span>
+          </div>
+          <div class="topbar__right"></div>
+        </header>
+
+        <div class="gallery">
+          <div class="frame">
+            <img id="slide-img" alt="Souvenir d'AYA" />
+            <video
+              id="slide-video"
+              class="is-hidden"
+              playsinline
+              muted
+              preload="metadata"
+            ></video>
+            <div class="frame__glow" aria-hidden="true"></div>
+          </div>
+          <div class="controls">
+            <button class="btn btn--ghost" id="prev" type="button">
+              Précédent
+            </button>
+            <div class="dots" id="dots" aria-hidden="true"></div>
+            <button class="btn btn--ghost" id="next" type="button">
+              Suivant
+            </button>
+          </div>
+        </div>
+
+        <audio id="audio" preload="auto" loop>
+          <source src="assets/audio/happy-birthday.mp3" type="audio/mpeg" />
+        </audio>
+
+        <div class="audio-gate is-hidden" id="audio-gate" role="status" aria-live="polite">
+          Touchez l’écran pour activer la musique
+        </div>
+      </section>
+    </main>
+
+    <script src="script.js"></script>
+  </body>
+</html>
+
