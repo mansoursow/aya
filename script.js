@@ -20,6 +20,9 @@
     { sources: ["assets/photos/07.mp4"] },
   ];
 
+  /** Dernière image affichée : sert de fond pendant le buffer vidéo (fluide sur mobile). */
+  let lastImageBackdrop = media[0].sources[0];
+
   const canvas = document.getElementById("fx");
   const ctx = canvas.getContext("2d", { alpha: true });
 
@@ -167,14 +170,8 @@
   let isVideoPlaying = false;
   let videoUnlockHandler = null;
   let activeSlideToken = 0;
-  const preloadVideoEl = document.createElement("video");
-  preloadVideoEl.muted = true;
-  preloadVideoEl.setAttribute("muted", "");
-  preloadVideoEl.playsInline = true;
-  preloadVideoEl.setAttribute("playsinline", "");
-  preloadVideoEl.setAttribute("webkit-playsinline", "");
-  preloadVideoEl.preload = "auto";
-  preloadVideoEl.setAttribute("preload", "auto");
+
+  const PRELOAD_LINK_IDS = ["preload-video-a", "preload-video-b"];
 
   function extOf(path) {
     const q = path.split("?")[0];
@@ -251,29 +248,51 @@
     }
   }
 
-  function preloadItem(i) {
-    const item = media[clampIndex(i)];
-    if (!item) return;
-    const src = item.sources[0];
-    if (isVideo(src)) {
-      // Un 2e <video> en preload peut saturer la connexion mobile et retarder la lecture.
-      if (isIOS) return;
-      try {
-        preloadVideoEl.pause();
-        preloadVideoEl.removeAttribute("src");
-        preloadVideoEl.load();
-        preloadVideoEl.src = src;
-        preloadVideoEl.load();
-      } catch {
-        // ignore
+  /**
+   * Précharge les 2 prochaines vidéos du carrousel (même ordre que les slides).
+   * Utilise <link rel="preload" as="video"> : léger sur iOS, pas de 2e décodeur vidéo.
+   */
+  function updateVideoPreloads(currentIdx) {
+    const hrefs = [];
+    for (let step = 1; step <= media.length && hrefs.length < 2; step++) {
+      const j = clampIndex(currentIdx + step);
+      const s = media[j].sources[0];
+      if (isVideo(s)) {
+        try {
+          hrefs.push(new URL(s, window.location.href).href);
+        } catch {
+          hrefs.push(s);
+        }
       }
-      return;
     }
+    for (let i = 0; i < PRELOAD_LINK_IDS.length; i++) {
+      const id = PRELOAD_LINK_IDS[i];
+      const existing = document.getElementById(id);
+      const href = hrefs[i];
+      if (!href) {
+        if (existing) existing.remove();
+        continue;
+      }
+      let link = existing;
+      if (!link) {
+        link = document.createElement("link");
+        link.id = id;
+        link.rel = "preload";
+        link.as = "video";
+        document.head.appendChild(link);
+      }
+      link.href = href;
+    }
+  }
 
-    const img = new Image();
-    img.decoding = "async";
-    img.loading = "eager";
-    img.src = src;
+  function warmupNextImageIfAny(currentIdx) {
+    const j = clampIndex(currentIdx + 1);
+    const s = media[j].sources[0];
+    if (!isVideo(s)) {
+      const img = new Image();
+      img.decoding = "async";
+      img.src = s;
+    }
   }
 
   function buildDots() {
@@ -304,8 +323,13 @@
     const sources = media[idx].sources;
     const firstSrc = sources[0];
     if (isVideo(firstSrc)) {
-      slideImg.classList.add("is-hidden");
+      // Fond = dernière photo affichée (pas d’écran vide pendant le buffer)
+      slideImg.classList.remove("is-hidden");
+      slideImg.src = lastImageBackdrop;
+      requestAnimationFrame(() => slideImg.classList.add("is-visible"));
+
       slideVideo.classList.remove("is-hidden");
+      slideVideo.classList.remove("is-visible");
 
       // Reset complet + URL (iOS) ou <source> (desktop multi-format)
       resetVideoEl();
@@ -332,7 +356,6 @@
             window.removeEventListener("touchstart", videoUnlockHandler);
             videoUnlockHandler = null;
           }
-          requestAnimationFrame(() => slideVideo.classList.add("is-visible"));
           return true;
         } catch {
           return false;
@@ -346,8 +369,6 @@
         slideVideo.removeEventListener("canplay", onReadyFallback);
         slideVideo.removeEventListener("loadeddata", onReadyFallback);
         slideVideo.removeEventListener("playing", onPlaying);
-        slideVideo.removeEventListener("stalled", onStalled);
-        slideVideo.removeEventListener("waiting", onWaiting);
       };
 
       const failAndContinue = (reason) => {
@@ -375,24 +396,14 @@
         if (token !== activeSlideToken) return;
         isVideoPlaying = true;
         if (videoGate) videoGate.classList.add("is-hidden");
+        slideImg.classList.remove("is-visible");
+        slideImg.classList.add("is-hidden");
         slideVideo.classList.add("is-visible");
         // Une seule fois par slide : en boucle, `playing` peut se répéter.
         if (!playingScheduled) {
           playingScheduled = true;
           scheduleNext();
         }
-      };
-
-      const onStalled = () => {
-        if (token !== activeSlideToken) return;
-        if (videoGate) {
-          videoGate.textContent = "Chargement de la vidéo…";
-          videoGate.classList.remove("is-hidden");
-        }
-      };
-
-      const onWaiting = () => {
-        onStalled();
       };
 
       const onReady = async () => {
@@ -432,8 +443,6 @@
 
       slideVideo.addEventListener("error", onError);
       slideVideo.addEventListener("playing", onPlaying);
-      slideVideo.addEventListener("stalled", onStalled);
-      slideVideo.addEventListener("waiting", onWaiting);
       slideVideo.addEventListener("canplaythrough", onReady, { once: true });
       slideVideo.addEventListener("canplay", onReadyFallback, { once: true });
       slideVideo.addEventListener("loadeddata", onReadyFallback, { once: true });
@@ -457,6 +466,7 @@
       img.onload = () => {
         if (token !== activeSlideToken) return;
         slideImg.src = src;
+        lastImageBackdrop = src;
         requestAnimationFrame(() => slideImg.classList.add("is-visible"));
       };
       img.onerror = () => {
@@ -470,8 +480,8 @@
 
     setDotActive();
 
-    // Précharge le prochain média pour réduire la latence au swipe/auto.
-    preloadItem(idx + 1);
+    updateVideoPreloads(idx);
+    warmupNextImageIfAny(idx);
   }
 
   function createFallbackDataUrl(label) {
@@ -561,9 +571,8 @@
     // Start fireworks immediately; switch panels over time.
     show(panelIntro);
 
-    // Mobile-first perf: commence à télécharger les médias le plus tôt possible.
-    preloadItem(0);
-    preloadItem(1);
+    // Dès l’intro : prépare les prochaines vidéos (réduit la latence à l’arrivée sur chaque clip).
+    updateVideoPreloads(0);
 
     window.setTimeout(() => {
       runningFx = false;
