@@ -213,6 +213,8 @@
       slideVideo.setAttribute("webkit-playsinline", "");
       slideVideo.autoplay = true;
       slideVideo.setAttribute("autoplay", "");
+      slideVideo.preload = "auto";
+      slideVideo.setAttribute("preload", "auto");
 
       slideVideo.src = src;
       slideVideo.currentTime = 0;
@@ -234,6 +236,17 @@
           return false;
         }
       };
+
+      const onError = () => {
+        slideVideo.removeEventListener("error", onError);
+        // Souvent: codec MOV non supporté sur iPhone (HEVC) ou MIME type incorrect
+        slideVideo.classList.add("is-hidden");
+        slideImg.classList.remove("is-hidden");
+        const fallback = createFallbackDataUrl("Vidéo non compatible (convertis en .mp4)");
+        slideImg.src = fallback;
+        requestAnimationFrame(() => slideImg.classList.add("is-visible"));
+      };
+      slideVideo.addEventListener("error", onError);
 
       const onCanPlay = async () => {
         slideVideo.removeEventListener("canplay", onCanPlay);

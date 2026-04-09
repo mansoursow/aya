@@ -1,5 +1,19 @@
 {
   "cleanUrls": true,
-  "trailingSlash": false
+  "trailingSlash": false,
+  "headers": [
+    {
+      "source": "/assets/(.*)\\.mp4",
+      "headers": [{ "key": "Content-Type", "value": "video/mp4" }]
+    },
+    {
+      "source": "/assets/(.*)\\.MOV",
+      "headers": [{ "key": "Content-Type", "value": "video/quicktime" }]
+    },
+    {
+      "source": "/assets/(.*)\\.mov",
+      "headers": [{ "key": "Content-Type", "value": "video/quicktime" }]
+    }
+  ]
 }
 
