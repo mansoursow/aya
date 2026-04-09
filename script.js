@@ -9,10 +9,10 @@
   const media = [
     { sources: ["assets/photos/01.jpeg"] },
     { sources: ["assets/photos/02.jpeg"] },
-    { sources: ["assets/photos/03.mp4", "assets/photos/03.MOV"] },
+    { sources: ["assets/photos/03.mp4"] },
     { sources: ["assets/photos/04.jpeg"] },
     { sources: ["assets/photos/05.jpeg"] },
-    { sources: ["assets/photos/06.mp4", "assets/photos/06.MOV"] },
+    { sources: ["assets/photos/06.mp4"] },
     { sources: ["assets/photos/07.mp4"] },
   ];
 

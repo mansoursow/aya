@@ -8,10 +8,10 @@ Ce dossier contient un site vitrine **statique** (HTML/CSS/JS) : feux d’artifi
 - Médias actuels (modifiable dans `script.js`) :
   - `01.jpeg`
   - `02.jpeg`
-  - `03.MOV` (optionnellement converti en `03.mp4` pour iPhone/réseau lent)
+  - `03.mp4`
   - `04.jpeg`
   - `05.jpeg`
-  - `06.MOV` (optionnellement converti en `06.mp4` pour iPhone/réseau lent)
+  - `06.mp4`
   - `07.mp4`
 
 ### 2) Ajouter la musique
