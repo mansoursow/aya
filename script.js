@@ -332,6 +332,7 @@
         });
       }, 350);
     } else {
+      const src = sources[0];
       slideVideo.pause();
       slideVideo.removeAttribute("src");
       slideVideo.load();
