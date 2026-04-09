@@ -4,14 +4,16 @@
   const SLIDE_MS = 3200;
   const VIDEO_MS = 6500;
 
+  // Pour iPhone + connexions faibles: on préfère des MP4 optimisées si elles existent
+  // (ex: 03.mp4), sinon on retombe sur le .MOV original.
   const media = [
-    { src: "assets/photos/01.jpeg" },
-    { src: "assets/photos/02.jpeg" },
-    { src: "assets/photos/03.MOV" },
-    { src: "assets/photos/04.jpeg" },
-    { src: "assets/photos/05.jpeg" },
-    { src: "assets/photos/06.MOV" },
-    { src: "assets/photos/07.mp4" },
+    { sources: ["assets/photos/01.jpeg"] },
+    { sources: ["assets/photos/02.jpeg"] },
+    { sources: ["assets/photos/03.mp4", "assets/photos/03.MOV"] },
+    { sources: ["assets/photos/04.jpeg"] },
+    { sources: ["assets/photos/05.jpeg"] },
+    { sources: ["assets/photos/06.mp4", "assets/photos/06.MOV"] },
+    { sources: ["assets/photos/07.mp4"] },
   ];
 
   const canvas = document.getElementById("fx");
@@ -188,7 +190,7 @@
   function preloadItem(i) {
     const item = media[clampIndex(i)];
     if (!item) return;
-    const src = item.src;
+    const src = item.sources[0];
     if (isVideo(src)) {
       try {
         preloadVideoEl.pause();
@@ -230,8 +232,9 @@
     slideVideo.classList.remove("is-visible");
     if (videoGate) videoGate.classList.add("is-hidden");
 
-    const src = media[idx].src;
-    if (isVideo(src)) {
+    const sources = media[idx].sources;
+    const firstSrc = sources[0];
+    if (isVideo(firstSrc)) {
       slideImg.classList.add("is-hidden");
       slideVideo.classList.remove("is-hidden");
 
@@ -252,7 +255,8 @@
       slideVideo.preload = "auto";
       slideVideo.setAttribute("preload", "auto");
 
-      slideVideo.src = src;
+      let sourceIndex = 0;
+      slideVideo.src = sources[sourceIndex];
       slideVideo.currentTime = 0;
       slideVideo.load();
 
@@ -274,11 +278,24 @@
       };
 
       const onError = () => {
+        // Essaye la source suivante (ex: MOV si MP4 manque, ou inversement)
+        if (sourceIndex < sources.length - 1) {
+          sourceIndex += 1;
+          slideVideo.pause();
+          slideVideo.removeAttribute("src");
+          slideVideo.load();
+          slideVideo.src = sources[sourceIndex];
+          slideVideo.currentTime = 0;
+          slideVideo.load();
+          return;
+        }
+
         slideVideo.removeEventListener("error", onError);
-        // Souvent: codec MOV non supporté sur iPhone (HEVC) ou MIME type incorrect
         slideVideo.classList.add("is-hidden");
         slideImg.classList.remove("is-hidden");
-        const fallback = createFallbackDataUrl("Vidéo non compatible (convertis en .mp4)");
+        const fallback = createFallbackDataUrl(
+          "Vidéo trop lourde/codec non supporté. Convertis en MP4 (H.264).",
+        );
         slideImg.src = fallback;
         requestAnimationFrame(() => slideImg.classList.add("is-visible"));
       };
@@ -376,7 +393,7 @@
 
   function scheduleNext() {
     if (slideTimer) window.clearTimeout(slideTimer);
-    const src = media[idx].src;
+    const src = media[idx].sources[0];
     const delay = isVideo(src) ? VIDEO_MS : SLIDE_MS;
     slideTimer = window.setTimeout(() => {
       next();
