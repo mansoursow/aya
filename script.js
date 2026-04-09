@@ -160,6 +160,14 @@
   let slideTimer = null;
   let isVideoPlaying = false;
   let videoUnlockHandler = null;
+  const preloadVideoEl = document.createElement("video");
+  preloadVideoEl.muted = true;
+  preloadVideoEl.setAttribute("muted", "");
+  preloadVideoEl.playsInline = true;
+  preloadVideoEl.setAttribute("playsinline", "");
+  preloadVideoEl.setAttribute("webkit-playsinline", "");
+  preloadVideoEl.preload = "auto";
+  preloadVideoEl.setAttribute("preload", "auto");
 
   function extOf(path) {
     const q = path.split("?")[0];
@@ -170,6 +178,34 @@
   function isVideo(path) {
     const ext = extOf(path);
     return ext === "mp4" || ext === "mov";
+  }
+
+  function clampIndex(i) {
+    const n = media.length;
+    return ((i % n) + n) % n;
+  }
+
+  function preloadItem(i) {
+    const item = media[clampIndex(i)];
+    if (!item) return;
+    const src = item.src;
+    if (isVideo(src)) {
+      try {
+        preloadVideoEl.pause();
+        preloadVideoEl.removeAttribute("src");
+        preloadVideoEl.load();
+        preloadVideoEl.src = src;
+        preloadVideoEl.load();
+      } catch {
+        // ignore
+      }
+      return;
+    }
+
+    const img = new Image();
+    img.decoding = "async";
+    img.loading = "eager";
+    img.src = src;
   }
 
   function buildDots() {
@@ -299,6 +335,9 @@
     }
 
     setDotActive();
+
+    // Précharge le prochain média pour réduire la latence au swipe/auto.
+    preloadItem(idx + 1);
   }
 
   function createFallbackDataUrl(label) {
@@ -389,6 +428,10 @@
   function startSequence() {
     // Start fireworks immediately; switch panels over time.
     show(panelIntro);
+
+    // Mobile-first perf: commence à télécharger les médias le plus tôt possible.
+    preloadItem(0);
+    preloadItem(1);
 
     window.setTimeout(() => {
       runningFx = false;

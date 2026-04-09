@@ -4,15 +4,32 @@
   "headers": [
     {
       "source": "/assets/(.*)\\.mp4",
-      "headers": [{ "key": "Content-Type", "value": "video/mp4" }]
+      "headers": [
+        { "key": "Content-Type", "value": "video/mp4" },
+        { "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }
+      ]
     },
     {
       "source": "/assets/(.*)\\.MOV",
-      "headers": [{ "key": "Content-Type", "value": "video/quicktime" }]
+      "headers": [
+        { "key": "Content-Type", "value": "video/quicktime" },
+        { "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }
+      ]
     },
     {
       "source": "/assets/(.*)\\.mov",
-      "headers": [{ "key": "Content-Type", "value": "video/quicktime" }]
+      "headers": [
+        { "key": "Content-Type", "value": "video/quicktime" },
+        { "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }
+      ]
+    },
+    {
+      "source": "/assets/(.*)\\.(jpe?g|png|gif|webp)",
+      "headers": [{ "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }]
+    },
+    {
+      "source": "/assets/(.*)\\.mp3",
+      "headers": [{ "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }]
     }
   ]
 }
