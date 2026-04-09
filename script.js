@@ -3,6 +3,10 @@
   const MESSAGE_MS = 2200;
   const SLIDE_MS = 3200;
   const VIDEO_MS = 6500;
+  /** iOS Safari : comportement différent (autoplay, buffer, limite bande passante). */
+  const isIOS =
+    /iPad|iPhone|iPod/i.test(navigator.userAgent) ||
+    (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
 
   // Pour iPhone + connexions faibles: on préfère des MP4 optimisées si elles existent
   // (ex: 03.mp4), sinon on retombe sur le .MOV original.
@@ -215,6 +219,8 @@
   function setupVideoAttrs() {
     slideVideo.loop = true;
     slideVideo.muted = true;
+    slideVideo.defaultMuted = true;
+    slideVideo.volume = 0;
     slideVideo.setAttribute("muted", "");
     slideVideo.playsInline = true;
     slideVideo.setAttribute("playsinline", "");
@@ -225,8 +231,17 @@
     slideVideo.setAttribute("preload", "auto");
   }
 
-  function setVideoSources(sources) {
+  /**
+   * Safari iOS gère souvent mieux une seule URL sur .src que des <source type="...">.
+   * Sur desktop, les <source> restent utiles si plusieurs formats.
+   */
+  function applyVideoSources(sources) {
     slideVideo.innerHTML = "";
+    slideVideo.removeAttribute("src");
+    if (sources.length === 1 || isIOS) {
+      slideVideo.src = sources[0];
+      return;
+    }
     for (const s of sources) {
       const el = document.createElement("source");
       el.src = s;
@@ -241,6 +256,8 @@
     if (!item) return;
     const src = item.sources[0];
     if (isVideo(src)) {
+      // Un 2e <video> en preload peut saturer la connexion mobile et retarder la lecture.
+      if (isIOS) return;
       try {
         preloadVideoEl.pause();
         preloadVideoEl.removeAttribute("src");
@@ -290,16 +307,22 @@
       slideImg.classList.add("is-hidden");
       slideVideo.classList.remove("is-hidden");
 
-      // Reset complet + sources multiples (Safari choisit une source compatible)
+      // Reset complet + URL (iOS) ou <source> (desktop multi-format)
       resetVideoEl();
       setupVideoAttrs();
-      setVideoSources(sources);
+      applyVideoSources(sources);
       slideVideo.classList.remove("is-hidden");
       slideVideo.currentTime = 0;
       slideVideo.load();
 
+      let readyFired = false;
+      let playingScheduled = false;
+      let stallTimer = null;
+
       const attemptPlay = async () => {
         try {
+          slideVideo.muted = true;
+          slideVideo.setAttribute("muted", "");
           await slideVideo.play();
           if (token !== activeSlideToken) return false;
           isVideoPlaying = true;
@@ -317,9 +340,14 @@
       };
 
       const cleanup = () => {
+        if (stallTimer) window.clearTimeout(stallTimer);
         slideVideo.removeEventListener("error", onError);
-        slideVideo.removeEventListener("canplay", onReady);
-        slideVideo.removeEventListener("loadeddata", onReady);
+        slideVideo.removeEventListener("canplaythrough", onReady);
+        slideVideo.removeEventListener("canplay", onReadyFallback);
+        slideVideo.removeEventListener("loadeddata", onReadyFallback);
+        slideVideo.removeEventListener("playing", onPlaying);
+        slideVideo.removeEventListener("stalled", onStalled);
+        slideVideo.removeEventListener("waiting", onWaiting);
       };
 
       const failAndContinue = (reason) => {
@@ -340,21 +368,47 @@
       };
 
       const onError = () => {
-        failAndContinue("Vidéo non lisible. Convertis en MP4 (H.264).");
+        failAndContinue("Vidéo non lisible. Convertis en MP4 (H.264, yuv420p).");
+      };
+
+      const onPlaying = () => {
+        if (token !== activeSlideToken) return;
+        isVideoPlaying = true;
+        if (videoGate) videoGate.classList.add("is-hidden");
+        slideVideo.classList.add("is-visible");
+        // Une seule fois par slide : en boucle, `playing` peut se répéter.
+        if (!playingScheduled) {
+          playingScheduled = true;
+          scheduleNext();
+        }
+      };
+
+      const onStalled = () => {
+        if (token !== activeSlideToken) return;
+        if (videoGate) {
+          videoGate.textContent = "Chargement de la vidéo…";
+          videoGate.classList.remove("is-hidden");
+        }
+      };
+
+      const onWaiting = () => {
+        onStalled();
       };
 
       const onReady = async () => {
-        cleanup();
+        if (readyFired) return;
+        readyFired = true;
         const ok = await attemptPlay();
         if (!ok) {
-          if (videoGate) videoGate.classList.remove("is-hidden");
+          if (videoGate) {
+            videoGate.textContent = "Touchez l’écran pour lancer la vidéo";
+            videoGate.classList.remove("is-hidden");
+          }
           if (!videoUnlockHandler) {
             videoUnlockHandler = () => {
               attemptPlay().then((worked) => {
-                if (worked) {
-                  if (videoGate) videoGate.classList.add("is-hidden");
-                } else {
-                  failAndContinue("Autoplay bloqué. Passage au suivant…");
+                if (!worked) {
+                  failAndContinue("Lecture impossible sur cet iPhone.");
                 }
               });
             };
@@ -362,27 +416,38 @@
             window.addEventListener("touchstart", videoUnlockHandler, { once: true });
           }
 
-          window.setTimeout(() => {
+          // Sur mobile lent, ne pas abandonner avant d’avoir laissé le temps au buffer.
+          stallTimer = window.setTimeout(() => {
             if (token === activeSlideToken && !isVideoPlaying) {
-              failAndContinue("Vidéo bloquée. Passage au suivant…");
+              failAndContinue("Vidéo trop lente à charger. Passe au suivant…");
             }
-          }, 1800);
+          }, isIOS ? 45000 : 25000);
         }
       };
 
-      slideVideo.addEventListener("error", onError);
-      slideVideo.addEventListener("canplay", onReady, { once: true });
-      slideVideo.addEventListener("loadeddata", onReady, { once: true });
+      const onReadyFallback = async () => {
+        if (readyFired) return;
+        await onReady();
+      };
 
-      // Kick
+      slideVideo.addEventListener("error", onError);
+      slideVideo.addEventListener("playing", onPlaying);
+      slideVideo.addEventListener("stalled", onStalled);
+      slideVideo.addEventListener("waiting", onWaiting);
+      slideVideo.addEventListener("canplaythrough", onReady, { once: true });
+      slideVideo.addEventListener("canplay", onReadyFallback, { once: true });
+      slideVideo.addEventListener("loadeddata", onReadyFallback, { once: true });
+
+      // Kick rapide : parfois iOS accepte play() avant canplaythrough.
       window.setTimeout(() => {
-        if (token !== activeSlideToken) return;
-        if (!isVideoPlaying) {
-          attemptPlay().then((worked) => {
-            if (!worked && videoGate) videoGate.classList.remove("is-hidden");
-          });
-        }
-      }, 250);
+        if (token !== activeSlideToken || readyFired) return;
+        attemptPlay().then((worked) => {
+          if (!worked && videoGate) {
+            videoGate.textContent = "Touchez l’écran pour lancer la vidéo";
+            videoGate.classList.remove("is-hidden");
+          }
+        });
+      }, isIOS ? 80 : 200);
     } else {
       const src = sources[0];
       resetVideoEl();
